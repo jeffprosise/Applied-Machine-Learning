@@ -158,7 +158,7 @@ def decode_predictions(predictions, image_w, image_h, input_w=YOLO3.width, input
 
     return output
 
-def draw_boxes(filename, boxes, figsize=(12, 8)):
+def annotate_image(filename, boxes, figsize=(12, 8)):
     image = plt.imread(filename)
     fig, ax = plt.subplots(figsize=figsize, subplot_kw={'xticks': [], 'yticks': []})
     ax.imshow(image)
