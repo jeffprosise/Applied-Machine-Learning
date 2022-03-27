@@ -92,27 +92,6 @@ def annotate_image(image, boxes, labels, scores, masks, min_confidence=0.7,
         
     ax.imshow(image)
 
-# From https://stackoverflow.com/questions/36921496/how-to-join-png-with-alpha-transparency-in-a-frame-in-realtime
-def blend_transparent(face_img, overlay_t_img):
-    # Split out the transparency mask from the colour info
-    overlay_img = overlay_t_img[:,:,:3] # Grab the BRG planes
-    overlay_mask = overlay_t_img[:,:,3:]  # And the alpha plane
-
-    # Again calculate the inverse mask
-    background_mask = 255 - overlay_mask
-
-    # Turn the masks into three channel, so we can use them as weights
-    overlay_mask = cv2.cvtColor(overlay_mask, cv2.COLOR_GRAY2BGR)
-    background_mask = cv2.cvtColor(background_mask, cv2.COLOR_GRAY2BGR)
-
-    # Create a masked out face image, and masked out overlay
-    # We convert the images to floating point in range 0.0 - 1.0
-    face_part = (face_img * (1 / 255.0)) * (background_mask * (1 / 255.0))
-    overlay_part = (overlay_img * (1 / 255.0)) * (overlay_mask * (1 / 255.0))
-
-    # And finally just add them together, and rescale it back to an 8bit integer image    
-    return np.uint8(cv2.addWeighted(face_part, 255.0, overlay_part, 255.0, 0.0))
-
 def change_background(session, foregroundImage, backgroundImage, min_confidence=0.7):
     #Submit foreground image to Mask R-CNN
     img_data = preprocess(foregroundImage)
@@ -131,12 +110,12 @@ def change_background(session, foregroundImage, backgroundImage, min_confidence=
     
     foregroundImage = np.array(foregroundImage)
     backgroundImage = np.array(backgroundImage)
-    
-    foregroundImage = cv2.cvtColor(foregroundImage, cv2.COLOR_BGR2BGRA)
     backgroundImage = cv2.resize(backgroundImage, foregroundImage.shape[1::-1])
     
     fig, ax = plt.subplots(1, figsize=(12,9), subplot_kw={'xticks': [], 'yticks': []})
     
+    # For each segmentation mask, copy the pixels inside the mask
+    # from the foreground image to the background image
     for mask, box, label, score in zip(masks, boxes, labels, scores):
         if score <= min_confidence:
             continue
@@ -159,11 +138,20 @@ def change_background(session, foregroundImage, backgroundImage, min_confidence=
 
         contours, hierarchy = cv2.findContours(im_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         
+        # Create a mask (stencil) of 1s and 0s with 1s denoting pixels that fall
+        # inside the contours
         mask_val = 1
         stencil  = np.zeros(foregroundImage.shape[:-1]).astype(np.uint8)
         cv2.fillPoly(stencil, contours, mask_val)
-        im_copy = foregroundImage.copy()
-        im_copy[stencil != mask_val] = (0, 0, 0, 0)
-        backgroundImage = blend_transparent(backgroundImage, im_copy)
+
+        # Copy pixels in the foreground image that correspond to 1s in the
+        # stencil to the background image
+        w = stencil.shape[1]
+        h = stencil.shape[0]
+
+        for x in range(w):
+            for y in range(h):
+                if (stencil[y, x] == mask_val):
+                    backgroundImage[y, x] = foregroundImage[y, x]
 
     ax.imshow(backgroundImage)
